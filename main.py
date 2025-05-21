@@ -1,92 +1,134 @@
-from fastapi import FastAPI, UploadFile, File
-import fitz  # PyMuPDF
-import pdfplumber
-import base64
-import os
-import tempfile
-
-# LangChain
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-
+from fastapi import FastAPI, Request, Depends
+from pydantic import BaseModel
+from transformers import pipeline
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
+from datetime import datetime
+import uuid
 
 app = FastAPI()
 
-@app.post("/extract-pdf-data/")
-async def extract_pdf_data(file: UploadFile = File(...)):
-    try:
-        # ---- STEP 1: Save temp PDF file ----
-        suffix = os.path.splitext(file.filename)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            temp_pdf_path = tmp.name
-            content = await file.read()
-            tmp.write(content)
+# === CORS Middleware (Optional for frontend) ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        extracted_tables = []
-        extracted_images = []
-        extracted_text = ""
+# === Load Zero-Shot Classifier ===
+classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
 
-        # ---- STEP 2: Extract text and tables ----
-        with pdfplumber.open(temp_pdf_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    extracted_text += page_text + "\n"
+# === Threat Categories & Regex Fallback ===
+THREAT_CATEGORIES = [
+    "harmless question", "how to hack", "prompt injection", "cyber attack",
+    "exploit a website", "bypass login", "steal user data", "phishing",
+    "data exfiltration", "malicious intent"
+]
+KEYWORDS = [
+    "how to hack", "bypass login", "steal cookies", "csrf", "xss",
+    "inject", "malware", "man in the middle", "phishing", "sql injection"
+]
 
-                tables = page.extract_tables()
-                for table in tables:
-                    table_dict = []
-                    headers = table[0]
-                    for row in table[1:]:
-                        row_dict = {headers[i]: row[i] for i in range(len(headers))}
-                        table_dict.append(row_dict)
-                    extracted_tables.append(table_dict)
+# === In-Memory Session Store ===
+session_store = {}  # session_id => [messages]
 
-        # ---- STEP 3: Extract images (base64) ----
-        doc = fitz.open(temp_pdf_path)
-        for page_index in range(len(doc)):
-            for img_index, img in enumerate(doc.get_page_images(page_index)):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                base64_image = base64.b64encode(image_bytes).decode('utf-8')
-                extracted_images.append(base64_image)
-        doc.close()
-        os.remove(temp_pdf_path)
+# === Threat Detection ===
+def is_llm_threat(text: str) -> bool:
+    result = classifier(text, THREAT_CATEGORIES, multi_label=True)
+    for label, score in zip(result["labels"], result["scores"]):
+        if label != "harmless question" and score > 0.6:
+            print(f"[Zero-Shot] Threat detected: {label} (score={score:.2f})")
+            return True
+    return False
 
-        # ---- STEP 4: Chunk + Embed text using LangChain ----
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        chunks = text_splitter.split_text(extracted_text)
+def is_regex_threat(text: str) -> bool:
+    text_lower = text.lower()
+    for keyword in KEYWORDS:
+        if keyword in text_lower:
+            print(f"[Regex] Threat keyword matched: {keyword}")
+            return True
+    return False
 
-        # Load embedding model
-        embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+def is_threatening(text: str) -> bool:
+    return is_llm_threat(text) or is_regex_threat(text)
 
-        # Create vector store
-        vectorstore = FAISS.from_texts(texts=chunks, embedding=embedding_model)
+# === Dummy LLM Response ===
+def dummy_llm_response(prompt: str) -> str:
+    return f"🤖 **Response:** _{prompt}_"
 
-        # Save vector DB locally
-        vectorstore_path = "vectorstores/pdf_index"
-        os.makedirs(vectorstore_path, exist_ok=True)
-        vectorstore.save_local(vectorstore_path)
+# === Request Schema ===
+class ChatInput(BaseModel):
+    message: str
+    session_id: str
 
-        return {
-            "message": "PDF processed and stored in vector DB",
-            "num_chunks": len(chunks),
-            "tables": extracted_tables,
-            "num_images": len(extracted_images),
-            "vectorstore_path": vectorstore_path
+class SessionInput(BaseModel):
+    session_id: str
+
+# === Welcome Endpoint ===
+@app.get("/")
+async def root():
+    return {"message": "🚀 NexusFlow AI Chat is running!"}
+
+# === Chat Endpoint ===
+@app.post("/chat")
+async def chat(input: ChatInput):
+    message = input.message.strip()
+    session_id = input.session_id.strip()
+
+    if is_threatening(message):
+        log_event = {
+            "event": "Blocked Threat",
+            "session_id": session_id,
+            "input": message,
+            "timestamp": datetime.utcnow().isoformat()
         }
+        print("[LOG]", log_event)
 
-    except Exception as e:
-        return {"error": str(e)}
-@app.get("/search/")
-async def search_vector(query: str):
-    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = FAISS.load_local("vectorstores/pdf_index", embeddings=embedding_model)
-    results = vectorstore.similarity_search(query, k=3)
-    return {"results": [r.page_content for r in results]}
+        return JSONResponse({
+            "status": "error",
+            "message": "🚨 Input flagged as malicious and blocked.",
+            "blocked": True,
+            "response_id": f"res_{uuid.uuid4().hex[:8]}",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+    if session_id not in session_store:
+        session_store[session_id] = []
+    session_store[session_id].append({"role": "user", "content": message})
+
+    response = dummy_llm_response(message)
+    session_store[session_id].append({"role": "bot", "content": response})
+
+    return {
+        "status": "success",
+        "response_id": f"res_{uuid.uuid4().hex[:8]}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "content": {"LLM Response": response},
+        "session_context": session_store[session_id],
+        "blocked": False
+    }
+
+# === View Chat History ===
+@app.get("/history")
+async def get_history(session_id: str):
+    history = session_store.get(session_id)
+    if history:
+        return {"status": "success", "session_id": session_id, "history": history}
+    return {"status": "error", "message": "Session not found."}
+
+# === Clear History (Preserve Session ID) ===
+@app.post("/clear-history")
+async def clear_history(input: SessionInput):
+    session_id = input.session_id
+    if session_id in session_store:
+        session_store[session_id] = []
+        return {"status": "success", "message": "History cleared.", "session_id": session_id}
+    return {"status": "error", "message": "Session not found."}
+
+# === End Session Completely ===
+@app.post("/end-session")
+async def end_session(input: SessionInput):
+    session_id = input.session_id
+    session_store.pop(session_id, None)
+    return {"status": "success", "message": "Session ended.", "session_id": session_id}

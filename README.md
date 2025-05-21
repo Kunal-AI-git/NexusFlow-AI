@@ -1,49 +1,84 @@
-# 📄 PDF Data Extractor & Search API (FastAPI + LangChain)
+# 🤖 NexusFlow AI Chat (Session-Based + Threat Filtering)
+This is a secure, session-based chatbot API built using **FastAPI** and **HuggingFace Transformers**. It supports:
+- Contextual chat history per session (in-memory only)
+- Threat and prompt injection detection using:
+  - 🤖 `facebook/bart-large-mnli` zero-shot classifier
+  - 🧪 Regex fallback for known attack patterns
+- Endpoint to view, clear, or end a session
+- Beautified LLM response formatting
 
-This FastAPI application allows you to:
-- Upload a PDF to extract text, tables, and images
-- Chunk and embed the text using a HuggingFace model
-- Store the embeddings in a FAISS vector store
-- Perform semantic search over the extracted content
+---
+
+## 🚀 Features
+
+- ✅ **Chat with session context** (no database required)
+- 🔒 **Threat filtering** using zero-shot classification + keyword checks
+- 💬 **One-session history memory**
+- 🧼 **Manual clear or end session**
+- 🎨 **Markdown-style bot response formatting**
 
 ---
 
 ## 🔧 Requirements
 
-Install the required Python packages:
+Install required dependencies:
 
 ```bash
 pip install -r requirements.txt
-Contents of requirements.txt:
-
-makefile
-fastapi
-uvicorn
-python-multipart
-PyMuPDF==1.22.5
-pdfplumber
-langchain
-langchain-community
-faiss-cpu
-sentence-transformers
-torch
-🚀 Running the Application
-Start the FastAPI server using Uvicorn:
-
+🚦 Run the API
 bash
+
 uvicorn main:app --reload
-Replace main with your Python filename if different (e.g., app.py → use uvicorn app:app --reload)
+📡 API Endpoints
+Method	Endpoint	Description
+GET	/	Health check
+POST	/chat	Chat with LLM using session_id
+GET	/history?session_id=xyz	Get current session history
+POST	/clear-history	Clear chat history (preserve session)
+POST	/end-session	Delete session data entirely
 
-The --reload flag enables auto-reloading on code changes (useful for development)
+📥 Example Request
+🧠 POST /chat
+json
 
-❗ Error Faced During Model Loading
-While attempting to load a model using a pickle file, I encountered the following error:
+{
+  "message": "How to build a chatbot?",
+  "session_id": "abc123"
+}
+🛡 Threat Detection
+If the input contains:
 
-pgsql
-ValueError: The de-serialization relies loading a pickle file. Pickle files can be modified to deliver a malicious payload that results in execution of arbitrary code on your machine. You will need to set allow_dangerous_deserialization to True to enable deserialization. If you do this, make sure that you trust the source of the data. For example, if you are loading a file that you created, and know that no one else has modified the file, then this is safe to do. Do not set this to True if you are loading a file from an untrusted source (e.g., some random site on the internet.).
+🚨 Harmful intents like "how to hack", "bypass login"
 
-🧾 Root Cause
-This error is triggered because the file I’m trying to load uses Python's pickle module for serialization, which can execute arbitrary code during deserialization. For security reasons, PyTorch (or the respective library) blocks this by default unless explicitly allowed using:
+🤖 Prompt injection attempts
 
-python
-allow_dangerous_deserialization=True
+The system will block the request with:
+
+json
+
+{
+  "status": "error",
+  "message": "🚨 Input flagged as malicious and blocked.",
+  "blocked": true
+}
+🧽 Clear or End Session
+🔄 Clear History
+bash
+
+POST /clear-history
+{
+  "session_id": "abc123"
+}
+🗑 End Session
+bash
+
+POST /end-session
+{
+  "session_id": "abc123"
+}
+📦 Folder Structure
+bash
+.
+├── main.py           # FastAPI app
+├── requirements.txt  # Dependencies
+├── README.md         # Project info

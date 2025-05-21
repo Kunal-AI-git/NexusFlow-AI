@@ -1,10 +1,7 @@
-fastapi
-uvicorn
-python-multipart
-PyMuPDF==1.22.5         # Used for image extraction from PDFs (imported as fitz)
-pdfplumber
-langchain
-langchain-community
-faiss-cpu                # FAISS for vector storage (use faiss-gpu if using GPU)
-sentence-transformers    # Required for HuggingFaceEmbeddings model
-torch                    # Dependency for sentence-transformers
+fastapi==0.111.0
+uvicorn==0.29.0
+pydantic==2.7.1
+transformers==4.41.1
+torch>=2.2.0
+starlette==0.37.2
+fastapi[all]==0.111.0
