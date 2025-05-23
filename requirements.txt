@@ -1,7 +1,8 @@
-fastapi==0.111.0
+fastapi==0.110.1
 uvicorn==0.29.0
 pydantic==2.7.1
-transformers==4.41.1
-torch>=2.2.0
-starlette==0.37.2
-fastapi[all]==0.111.0
+transformers==4.40.1
+torch>=2.0.0
+python-multipart==0.0.9
+aiofiles==23.2.1
+mimetypes

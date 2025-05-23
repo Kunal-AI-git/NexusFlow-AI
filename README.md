@@ -1,84 +1,90 @@
-# 🤖 NexusFlow AI Chat (Session-Based + Threat Filtering)
-This is a secure, session-based chatbot API built using **FastAPI** and **HuggingFace Transformers**. It supports:
-- Contextual chat history per session (in-memory only)
-- Threat and prompt injection detection using:
-  - 🤖 `facebook/bart-large-mnli` zero-shot classifier
-  - 🧪 Regex fallback for known attack patterns
-- Endpoint to view, clear, or end a session
-- Beautified LLM response formatting
+## AI-Powered Chat and File Analysis API
+This is a FastAPI backend application for secure and session-based user chat with threat detection, file uploads (PDFs and images), attachment tracking, and contextual AI-powered responses.
 
----
+## Features
+1. Session-based chat memory with history
 
-## 🚀 Features
+2. Threat detection using a zero-shot classifier (facebook/bart-large-mnli)
 
-- ✅ **Chat with session context** (no database required)
-- 🔒 **Threat filtering** using zero-shot classification + keyword checks
-- 💬 **One-session history memory**
-- 🧼 **Manual clear or end session**
-- 🎨 **Markdown-style bot response formatting**
+3. File upload and storage with public URL generation (PDFs & Images)
 
----
+4. Attachment metadata and chat response formatting
 
-## 🔧 Requirements
+5. Contextual response simulation (customizable with any LLM)
 
-Install required dependencies:
+6. Auto-cleanup of inactive sessions every 30 minutes
 
-```bash
-pip install -r requirements.txt
-🚦 Run the API
-bash
+7. Session history inspection & deletion endpoints
 
-uvicorn main:app --reload
-📡 API Endpoints
-Method	Endpoint	Description
-GET	/	Health check
-POST	/chat	Chat with LLM using session_id
-GET	/history?session_id=xyz	Get current session history
-POST	/clear-history	Clear chat history (preserve session)
-POST	/end-session	Delete session data entirely
+8. CORS enabled for cross-origin access
 
-📥 Example Request
-🧠 POST /chat
-json
-
-{
-  "message": "How to build a chatbot?",
-  "session_id": "abc123"
-}
-🛡 Threat Detection
-If the input contains:
-
-🚨 Harmful intents like "how to hack", "bypass login"
-
-🤖 Prompt injection attempts
-
-The system will block the request with:
-
-json
-
-{
-  "status": "error",
-  "message": "🚨 Input flagged as malicious and blocked.",
-  "blocked": true
-}
-🧽 Clear or End Session
-🔄 Clear History
-bash
-
-POST /clear-history
-{
-  "session_id": "abc123"
-}
-🗑 End Session
-bash
-
-POST /end-session
-{
-  "session_id": "abc123"
-}
-📦 Folder Structure
+## Project Structure
 bash
 .
-├── main.py           # FastAPI app
-├── requirements.txt  # Dependencies
-├── README.md         # Project info
+├── main.py             # FastAPI backend code
+├── uploads/            # Folder to store uploaded files
+├── threat_log.txt      # Log file for flagged threats
+└── README.md           # Project documentation
+
+## Setup & Run
+1. Clone the Repository
+bash
+git clone https://github.com/yourusername/ai-chat-analyzer.git
+cd ai-chat-analyzer
+
+2. Create a Virtual Environment
+bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+3. Install Dependencies
+bash
+pip install -r requirements.txt
+If requirements.txt is not available, install manually:
+bash
+pip install fastapi uvicorn python-multipart transformers torch aiofiles
+
+4. Run the App
+bash
+uvicorn main:app --reload
+Visit http://localhost:8000/docs for the Swagger UI.
+
+## API Endpoints
+## POST /upload
+Upload an image or PDF file.
+
+Form Data:
+
+file: UploadFile (image/pdf)
+
+session_id: string
+
+## POST /chat
+Submit a chat message. Detects threats and uses recent chat context for response.
+
+Body:
+
+json
+
+{
+  "message": "Tell me about the uploaded file",
+  "session_id": "session_1"
+}
+
+## GET /session-history/{session_id}
+Returns chat and uploaded attachments history for the session.
+
+## DELETE /session-history/{session_id}
+Clears messages and attachments for a session.
+
+## Threat Detection
+Uses zero-shot classification (facebook/bart-large-mnli) to flag potentially violent or threatening input. Logs all detected threats in threat_log.txt.
+
+## Uploaded File Access
+Uploaded files are publicly accessible via:
+
+bash
+http://localhost:8000/uploads/<filename>
+
+## License
+MIT License
